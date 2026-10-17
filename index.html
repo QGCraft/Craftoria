@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minecraft-Projekt Teams</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#f2f7f1;--card:#fff;--ink:#1d2b22;--mute:#66756b;--line:#e1e9e0;--accent:#2a8f4e;--accent2:#5cc46a;--on:#fff;--warn:#d4553a;--sh:rgba(30,70,45,.10);color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#121714;--card:#1d2620;--ink:#e8efe3;--mute:#9fb09a;--line:#2d3a31;--accent:#4fb86a;--accent2:#7bdc86;--on:#0c1a10;--warn:#ee8a72;--sh:rgba(0,0,0,.4);color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Nunito,system-ui,sans-serif}
+header{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on);padding:28px 16px 34px;border-radius:0 0 32px 32px;box-shadow:0 10px 30px var(--sh)}
+header>div{max-width:960px;margin:auto;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+.hr{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+h1{font:800 26px/1.3 Nunito,sans-serif;margin:0;letter-spacing:-.3px}
+h2{font:800 20px/1.3 Nunito,sans-serif;margin:0 0 14px}
+main{max-width:960px;margin:auto;padding:28px 16px}
+label{font-size:13px;color:var(--mute);display:block;margin-bottom:4px}
+input,textarea{width:100%;padding:11px 14px;border:1.5px solid var(--line);border-radius:14px;outline:0;background:var(--bg);color:var(--ink);font:inherit;transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 20%,transparent)}
+header input{width:200px;background:#fff;color:#1d2b22;border:0;border-radius:99px;box-shadow:0 4px 12px #0002}
+.panel,.card{background:var(--card);border:1px solid var(--line);box-shadow:0 8px 28px var(--sh);border-radius:24px;padding:22px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.card{margin:0;display:flex;flex-direction:column;gap:10px;transition:transform .2s,box-shadow .2s}
+.card:hover{transform:translateY(-4px);box-shadow:0 14px 34px var(--sh)}
+.card h3{margin:0;font-size:18px}
+.mute{color:var(--mute);font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tag{font-size:12.5px;font-weight:600;background:color-mix(in srgb,var(--accent) 13%,transparent);border-radius:99px;padding:3px 11px;color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border-radius:99px;padding:3px 12px 3px 4px;font-size:14px;font-weight:600}
+.av{border-radius:8px;image-rendering:pixelated;background:var(--line);flex:none}
+button{font:inherit;font-weight:800;padding:10px 20px;border:0;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on);cursor:pointer;box-shadow:0 6px 16px var(--sh);transition:transform .15s,filter .15s}
+button:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.06)}
+button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);box-shadow:none}
+header button.ghost{color:var(--on);border-color:#fff8}
+button.bad{background:var(--warn);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+.req{border-top:1px solid var(--line);padding:10px 0;display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.banner{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on);padding:14px 20px;border-radius:20px;margin-bottom:20px;font-weight:800;box-shadow:0 8px 22px var(--sh)}
+.note{background:var(--card);border:1.5px dashed var(--line);padding:16px 20px;border-radius:20px;margin-bottom:20px}
+#ov{position:fixed;inset:0;background:#0007;backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+#ov[hidden],#toast[hidden]{display:none}
+#ov .panel{max-width:420px;width:100%;margin:0}
+#toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 22px;border-radius:99px;box-shadow:0 8px 24px var(--sh);z-index:30}
+</style>
+</head>
+<body>
+<header><div>
+  <h1>⛏ Minecraft-Projekt Teams</h1>
+  <div class="hr">
+    <input id="mc" maxlength="16" placeholder="Dein Minecraft-Name" aria-label="Dein Minecraft-Name">
+    <span id="auth" class="hr"></span>
+  </div>
+</div></header>
+<main>
+  <div id="status"></div>
+  <div id="banner"></div>
+  <section id="mine"></section>
+  <section id="create" class="panel" hidden>
+    <h2>Team erstellen</h2>
+    <label for="tn">Teamname</label><input id="tn" maxlength="40">
+    <label for="td" style="margin-top:10px">Beschreibung (Bauprojekt, Ziele, Koordinaten …)</label><textarea id="td" rows="3" maxlength="400"></textarea>
+    <label for="tm" style="margin-top:10px">Maximale Mitglieder</label><input id="tm" type="number" min="2" max="50" value="8" style="width:100px">
+    <p><button id="mk">Team erstellen</button></p>
+  </section>
+  <h2>Alle Teams</h2>
+  <div id="grid" class="grid"></div>
+</main>
+<div id="ov" hidden><div class="panel">
+  <h2 id="ovt">Beitritt anfragen</h2>
+  <label for="ovm">Nachricht an den Ersteller (optional)</label>
+  <textarea id="ovm" rows="3" maxlength="200"></textarea>
+  <p class="row"><button id="ovs">Anfrage senden</button><button class="ghost" id="ovc">Abbrechen</button></p>
+</div></div>
+<div id="toast" hidden></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, writeBatch, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ====== SCHRITT: Hier deine Firebase-Config einfügen (siehe README) ======
+const firebaseConfig = {
+  apiKey: "AIzaSyDFEVn-Fqff8pYX3LQ9zpyycAkmTRlkLRo",
+  authDomain: "minecraftteams-ffdab.firebaseapp.com",
+  projectId: "minecraftteams-ffdab",
+  storageBucket: "minecraftteams-ffdab.firebasestorage.app",
+  messagingSenderId: "882998349973",
+  appId: "1:882998349973:web:d5e082a2c613636daecb9c""
+};
+// ==========================================================================
+
+const $ = s => document.querySelector(s);
+function h(t, a, ...c) {
+  const e = document.createElement(t);
+  for (const k in a || {}) {
+    if (k === "class") e.className = a[k];
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), a[k]);
+    else e.setAttribute(k, a[k]);
+  }
+  for (const x of c.flat()) if (x != null && x !== false) e.append(x.nodeType ? x : document.createTextNode(x));
+  return e;
+}
+const av = (name, size = 28) => h("img", { class: "av", src: "https://mc-heads.net/avatar/" + encodeURIComponent(name || "Steve") + "/" + size * 2, width: size, height: size, alt: "", loading: "lazy", onerror: e => e.target.style.visibility = "hidden" });
+const chip = name => h("span", { class: "chip" }, av(name), name);
+let tt;
+function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3500); }
+const fail = e => toast("Fehler: " + ((e && e.message) || e));
+
+try { $("#mc").value = localStorage.getItem("mc") || ""; } catch (e) {}
+$("#mc").addEventListener("input", () => { try { localStorage.setItem("mc", $("#mc").value.trim()); } catch (e) {} });
+const mcName = () => $("#mc").value.trim();
+
+let me = null, myName = "", teams = [], incoming = [], outgoing = {}, unsubs = [], target = null, armed = false;
+const configured = !firebaseConfig.apiKey.startsWith("DEIN");
+let auth, db;
+
+const myTeam = () => teams.find(t => t.id === me);
+const isMember = t => (t.members || []).some(m => m.id === me);
+
+function render() {
+  const st = $("#status"); st.replaceChildren();
+  const au = $("#auth"); au.replaceChildren();
+  if (!configured) {
+    st.append(h("div", { class: "note" }, "Firebase ist noch nicht eingerichtet. Trage deine Config in der index.html ein (Anleitung in der README)."));
+  } else if (!me) {
+    au.append(h("button", { class: "ghost", onclick: () => signInWithPopup(auth, new GoogleAuthProvider()).catch(fail) }, "Mit Google einloggen"));
+    st.append(h("div", { class: "note" }, "Du kannst alle Teams ansehen. Zum Erstellen und Beitreten bitte oben einloggen."));
+  } else {
+    au.append(h("span", {}, myName), h("button", { class: "ghost", onclick: () => signOut(auth) }, "Logout"));
+  }
+  const mt = myTeam();
+  $("#create").hidden = !me || !!mt;
+
+  const b = $("#banner"); b.replaceChildren();
+  if (mt && incoming.length) b.append(h("div", { class: "banner" }, "📬 " + incoming.length + " neue Beitrittsanfrage" + (incoming.length > 1 ? "n" : "") + " für dein Team"));
+
+  const mine = $("#mine"); mine.replaceChildren();
+  if (mt) {
+    const full = mt.members.length >= (mt.max || 8);
+    mine.append(h("div", { class: "panel" },
+      h("h2", {}, "Mein Team: " + mt.name),
+      h("p", { class: "mute" }, "Mitglieder (" + mt.members.length + "/" + (mt.max || 8) + ")"),
+      mt.members.map(m => h("div", { class: "req" }, chip(m.mc), m.id === me ? h("span", { class: "tag" }, "Du") :
+        h("button", { class: "ghost", onclick: () => updateDoc(doc(db, "teams", me), { members: mt.members.filter(x => x.id !== m.id) }).catch(fail) }, "Entfernen"))),
+      h("p", { class: "mute", style: "margin-top:16px" }, "Beitrittsanfragen"),
+      incoming.length ? incoming.map(r => h("div", { class: "req" },
+        h("div", {}, chip(r.mc), r.msg ? h("div", { class: "mute" }, "„" + r.msg + "“") : null),
+        h("div", { class: "row" },
+          h("button", { disabled: full, onclick: () => accept(r) }, "Annehmen"),
+          h("button", { class: "ghost", onclick: () => deleteDoc(doc(db, "requests", r.id)).catch(fail) }, "Ablehnen"))))
+        : h("div", { class: "mute" }, "Keine offenen Anfragen."),
+      h("p", {}, h("button", { class: "bad", onclick: async e => {
+        if (!armed) { armed = true; e.target.textContent = "Wirklich löschen?"; return; }
+        armed = false; await removeTeam();
+      } }, "Team löschen"))));
+  }
+
+  const g = $("#grid"); g.replaceChildren();
+  if (!teams.length) g.append(h("p", { class: "mute" }, "Noch keine Teams. Erstelle das erste!"));
+  [...teams].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).forEach(t => {
+    const n = (t.members || []).length, max = t.max || 8;
+    let act = null;
+    if (me) {
+      if (t.id === me) act = h("span", { class: "tag" }, "Dein Team");
+      else if (isMember(t)) act = h("span", { class: "tag" }, "✓ Du bist Mitglied");
+      else if (outgoing[t.id]) act = h("div", { class: "row" }, h("span", { class: "tag" }, "Anfrage gesendet"),
+        h("button", { class: "ghost", onclick: () => deleteDoc(doc(db, "requests", t.id + "_" + me)).catch(fail) }, "Zurückziehen"));
+      else act = h("button", { disabled: n >= max, onclick: () => openJoin(t) }, n >= max ? "Team voll" : "Beitritt anfragen");
+    }
+    g.append(h("div", { class: "card" },
+      h("h3", {}, t.name),
+      h("div", { class: "row" }, h("span", { class: "tag" }, n + "/" + max + " Mitglieder"), h("span", { class: "mute" }, "Ersteller:"), chip(t.ownerMc)),
+      h("div", { class: "mute" }, t.desc || "Keine Beschreibung."),
+      h("div", { class: "row" }, (t.members || []).map(m => chip(m.mc))),
+      act));
+  });
+}
+
+async function accept(r) {
+  const t = myTeam();
+  if (t.members.length >= (t.max || 8)) return toast("Dein Team ist voll.");
+  const b = writeBatch(db);
+  b.update(doc(db, "teams", me), { members: arrayUnion({ id: r.fromUid, mc: r.mc }) });
+  b.delete(doc(db, "requests", r.id));
+  try { await b.commit(); } catch (e) { fail(e); }
+}
+async function removeTeam() {
+  const b = writeBatch(db);
+  b.delete(doc(db, "teams", me));
+  incoming.forEach(r => b.delete(doc(db, "requests", r.id)));
+  try { await b.commit(); } catch (e) { fail(e); }
+}
+function openJoin(t) {
+  if (!mcName()) { toast("Bitte trage oben zuerst deinen Minecraft-Namen ein."); $("#mc").focus(); return; }
+  target = t; $("#ovt").textContent = "Beitritt zu „" + t.name + "“ anfragen"; $("#ovm").value = ""; $("#ov").hidden = false;
+}
+$("#ovc").onclick = () => $("#ov").hidden = true;
+$("#ovs").onclick = async () => {
+  const t = target; $("#ov").hidden = true;
+  try {
+    await setDoc(doc(db, "requests", t.id + "_" + me), { teamId: t.id, teamName: t.name, fromUid: me, mc: mcName(), msg: $("#ovm").value.trim(), at: Date.now() });
+    toast("Anfrage an " + (t.ownerMc || "den Ersteller") + " gesendet.");
+  } catch (e) { fail(e); }
+};
+$("#mk").onclick = async () => {
+  const name = $("#tn").value.trim();
+  if (!name) return toast("Bitte gib einen Teamnamen ein.");
+  if (!mcName()) { toast("Bitte trage oben deinen Minecraft-Namen ein."); $("#mc").focus(); return; }
+  try {
+    await setDoc(doc(db, "teams", me), {
+      name, desc: $("#td").value.trim(), max: Math.min(50, Math.max(2, +$("#tm").value || 8)),
+      ownerId: me, ownerMc: mcName(), members: [{ id: me, mc: mcName() }], createdAt: Date.now()
+    });
+    $("#tn").value = ""; $("#td").value = "";
+  } catch (e) { fail(e); }
+};
+
+render();
+if (configured) {
+  const app = initializeApp(firebaseConfig);
+  auth = getAuth(app); db = getFirestore(app);
+  onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, fail);
+  onAuthStateChanged(auth, u => {
+    unsubs.forEach(f => f()); unsubs = []; incoming = []; outgoing = {};
+    me = u ? u.uid : null; myName = u ? (u.displayName || "") : "";
+    if (u) {
+      unsubs.push(onSnapshot(query(collection(db, "requests"), where("fromUid", "==", u.uid)),
+        s => { outgoing = {}; s.docs.forEach(d => outgoing[d.data().teamId] = d.data()); render(); }, fail));
+      unsubs.push(onSnapshot(query(collection(db, "requests"), where("teamId", "==", u.uid)),
+        s => { incoming = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, fail));
+    }
+    render();
+  });
+}
+</script>
+</body>
+</html>
