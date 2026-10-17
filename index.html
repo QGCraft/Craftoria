@@ -97,7 +97,8 @@ function h(t, a, ...c) {
   for (const k in a || {}) {
     if (k === "class") e.className = a[k];
     else if (k.startsWith("on")) e.addEventListener(k.slice(2), a[k]);
-    else e.setAttribute(k, a[k]);
+    else if (a[k] === false || a[k] == null) continue;
+    else e.setAttribute(k, a[k] === true ? "" : a[k]);
   }
   for (const x of c.flat()) if (x != null && x !== false) e.append(x.nodeType ? x : document.createTextNode(x));
   return e;
