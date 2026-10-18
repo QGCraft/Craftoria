@@ -30,6 +30,13 @@ header input{width:200px;background:#fff;color:#1d2b22;border:0;border-radius:99
 .tag{font-size:12.5px;font-weight:600;background:color-mix(in srgb,var(--accent) 13%,transparent);border-radius:99px;padding:3px 11px;color:var(--accent)}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border-radius:99px;padding:3px 12px 3px 4px;font-size:14px;font-weight:600}
 .av{border-radius:8px;image-rendering:pixelated;background:var(--line);flex:none}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:start}
+.tag.off{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.tag.unk{color:var(--mute);background:var(--bg)}
+button.sm{padding:5px 14px;font-size:13px}
+.avw{position:relative;display:inline-flex;flex:none}
+.dot{position:absolute;right:-3px;bottom:-3px;width:12px;height:12px;border-radius:50%;background:#2fe04f;border:2px solid var(--card);box-shadow:0 0 6px #2fe04f99}
+.chip .dot{border-color:var(--bg)}
 button{font:inherit;font-weight:800;padding:10px 20px;border:0;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on);cursor:pointer;box-shadow:0 6px 16px var(--sh);transition:transform .15s,filter .15s}
 button:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.06)}
 button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);box-shadow:none}
@@ -54,6 +61,16 @@ button:disabled{opacity:.5;cursor:default}
   </div>
 </div></header>
 <main>
+  <section class="panel" id="srv">
+    <h2>🖥 Server-Status</h2>
+    <div class="stats">
+      <div><label>Adresse</label><div class="row"><strong id="srvAddr"></strong><button class="ghost sm" id="srvCopy">Kopieren</button></div></div>
+      <div><label>Erreichbarkeit</label><span id="srvState" class="tag unk">Prüfe …</span></div>
+      <div><label>Spieler online</label><strong id="srvPl" style="font-size:22px">–</strong></div>
+    </div>
+    <div id="srvNames" class="row" style="margin-top:12px"></div>
+    <p class="mute" id="srvInfo" style="margin:10px 0 0"></p>
+  </section>
   <div id="status"></div>
   <div id="banner"></div>
   <section id="mine"></section>
@@ -103,7 +120,11 @@ function h(t, a, ...c) {
   for (const x of c.flat()) if (x != null && x !== false) e.append(x.nodeType ? x : document.createTextNode(x));
   return e;
 }
-const av = (name, size = 28) => h("img", { class: "av", src: "https://mc-heads.net/avatar/" + encodeURIComponent(name || "Steve") + "/" + size * 2, width: size, height: size, alt: "", loading: "lazy", onerror: e => e.target.style.visibility = "hidden" });
+let onlineSet = new Set();
+const isOn = n => onlineSet.has(String(n || "").toLowerCase());
+const av = (name, size = 28) => h("span", { class: "avw" },
+  h("img", { class: "av", src: "https://mc-heads.net/avatar/" + encodeURIComponent(name || "Steve") + "/" + size * 2, width: size, height: size, alt: "", loading: "lazy", onerror: e => e.target.style.visibility = "hidden" }),
+  isOn(name) ? h("span", { class: "dot", title: "Gerade online" }) : null);
 const chip = name => h("span", { class: "chip" }, av(name), name);
 let tt;
 function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3500); }
@@ -217,6 +238,51 @@ $("#mk").onclick = async () => {
     $("#tn").value = ""; $("#td").value = "";
   } catch (e) { fail(e); }
 };
+
+// ====== Server-Status ======
+const SERVER = "craftoria.funkstelle.net";
+async function getJson(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+async function fetchStatus() {
+  try {
+    const d = await getJson("https://api.mcstatus.io/v2/status/java/" + SERVER);
+    return { online: !!d.online, version: d.version && d.version.name_clean,
+      players: d.players ? { on: d.players.online, max: d.players.max, list: (d.players.list || []).map(p => p.name_clean || p.name_raw) } : null };
+  } catch (e) {}
+  try {
+    const d = await getJson("https://api.mcsrvstat.us/3/" + SERVER);
+    return { online: !!d.online, version: d.version,
+      players: d.players ? { on: d.players.online, max: d.players.max, list: (d.players.list || []).map(p => p.name) } : null };
+  } catch (e) {}
+  return null;
+}
+async function loadSrv() {
+  const st = $("#srvState"), pl = $("#srvPl"), names = $("#srvNames"), info = $("#srvInfo");
+  const s = await fetchStatus();
+  onlineSet = new Set(s && s.online && s.players ? s.players.list.filter(Boolean).map(n => n.toLowerCase()) : []);
+  names.replaceChildren();
+  if (!s) {
+    st.className = "tag unk"; st.textContent = "Nicht abrufbar"; pl.textContent = "–";
+    info.textContent = "Der Status konnte gerade nicht abgefragt werden. Es wird automatisch erneut versucht.";
+    render();
+    return;
+  }
+  const time = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  if (s.online) {
+    st.className = "tag"; st.textContent = "● Online";
+    pl.textContent = s.players ? s.players.on + " / " + s.players.max : "–";
+    (s.players ? s.players.list : []).filter(Boolean).slice(0, 20).forEach(n => names.append(chip(n)));
+    info.textContent = (s.version ? "Version: " + s.version + " · " : "") + "Zuletzt geprüft: " + time + " Uhr"
+      + (s.players && s.players.on > 0 && !s.players.list.length ? " · Spielernamen werden vom Server nicht übermittelt" : "");
+  } else {
+    st.className = "tag off"; st.textContent = "● Offline"; pl.textContent = "0";
+    info.textContent = "Zuletzt geprüft: " + time + " Uhr";
+  }
+  render();
+}
+$("#srvAddr").textContent = SERVER;
+$("#srvCopy").onclick = () => navigator.clipboard.writeText(SERVER).then(() => toast("Adresse kopiert."), () => toast(SERVER));
+loadSrv();
+setInterval(loadSrv, 60000);
 
 render();
 if (configured) {
