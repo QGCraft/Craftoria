@@ -37,6 +37,8 @@ button.sm{padding:5px 14px;font-size:13px}
 .avw{position:relative;display:inline-flex;flex:none}
 .dot{position:absolute;right:-3px;bottom:-3px;width:12px;height:12px;border-radius:50%;background:#2fe04f;border:2px solid var(--card);box-shadow:0 0 6px #2fe04f99}
 .chip .dot{border-color:var(--bg)}
+.bars{display:inline-flex;align-items:flex-end;gap:3px;height:20px}
+.bars span{width:6px;border-radius:2px}
 button{font:inherit;font-weight:800;padding:10px 20px;border:0;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on);cursor:pointer;box-shadow:0 6px 16px var(--sh);transition:transform .15s,filter .15s}
 button:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.06)}
 button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);box-shadow:none}
@@ -67,6 +69,7 @@ button:disabled{opacity:.5;cursor:default}
       <div><label>Adresse</label><div class="row"><strong id="srvAddr"></strong><button class="ghost sm" id="srvCopy">Kopieren</button></div></div>
       <div><label>Erreichbarkeit</label><span id="srvState" class="tag unk">Prüfe …</span></div>
       <div><label>Spieler online</label><strong id="srvPl" style="font-size:22px">–</strong></div>
+      <div><label>Server-Ping</label><div class="row" style="gap:10px"><span class="bars" id="srvBars"></span><strong id="srvPing" style="font-size:22px">–</strong></div><div class="mute" style="font-size:12px">gemessen vom Status-Dienst aus</div></div>
     </div>
     <div id="srvNames" class="row" style="margin-top:12px"></div>
     <p class="mute" id="srvInfo" style="margin:10px 0 0"></p>
@@ -255,32 +258,47 @@ async function fetchStatus() {
   } catch (e) {}
   return null;
 }
+async function fetchPing() {
+  try {
+    const d = await getJson("https://mc-api.io/server/JAVA/" + SERVER);
+    const v = d.ping != null ? d.ping : d.latency;
+    return typeof v === "number" ? Math.round(v) : null;
+  } catch (e) { return null; }
+}
+function showPing(ms) {
+  const bars = $("#srvBars"); bars.replaceChildren();
+  const lvl = ms == null ? 0 : ms < 60 ? 4 : ms < 120 ? 3 : ms < 200 ? 2 : 1;
+  const col = lvl >= 3 ? "var(--accent)" : lvl === 2 ? "#e0a82e" : "var(--warn)";
+  for (let i = 1; i <= 4; i++) bars.append(h("span", { style: "height:" + (4 + i * 4) + "px;background:" + (i <= lvl ? col : "var(--line)") }));
+  $("#srvPing").textContent = ms == null ? "–" : ms + " ms";
+}
 async function loadSrv() {
   const st = $("#srvState"), pl = $("#srvPl"), names = $("#srvNames"), info = $("#srvInfo");
   const s = await fetchStatus();
   onlineSet = new Set(s && s.online && s.players ? s.players.list.filter(Boolean).map(n => n.toLowerCase()) : []);
   names.replaceChildren();
   if (!s) {
-    st.className = "tag unk"; st.textContent = "Nicht abrufbar"; pl.textContent = "–";
+    st.className = "tag unk"; st.textContent = "Nicht abrufbar"; pl.textContent = "–"; showPing(null);
     info.textContent = "Der Status konnte gerade nicht abgefragt werden. Es wird automatisch erneut versucht.";
     render();
     return;
   }
   const time = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   if (s.online) {
-    st.className = "tag"; st.textContent = "● Online";
+    st.className = "tag"; st.textContent = "● Online"; fetchPing().then(showPing);
     pl.textContent = s.players ? s.players.on + " / " + s.players.max : "–";
     (s.players ? s.players.list : []).filter(Boolean).slice(0, 20).forEach(n => names.append(chip(n)));
     info.textContent = (s.version ? "Version: " + s.version + " · " : "") + "Zuletzt geprüft: " + time + " Uhr"
       + (s.players && s.players.on > 0 && !s.players.list.length ? " · Spielernamen werden vom Server nicht übermittelt" : "");
   } else {
-    st.className = "tag off"; st.textContent = "● Offline"; pl.textContent = "0";
+    st.className = "tag off"; st.textContent = "● Offline"; pl.textContent = "0"; showPing(null);
     info.textContent = "Zuletzt geprüft: " + time + " Uhr";
   }
   render();
 }
 $("#srvAddr").textContent = SERVER;
 $("#srvCopy").onclick = () => navigator.clipboard.writeText(SERVER).then(() => toast("Adresse kopiert."), () => toast(SERVER));
+showPing(null);
 loadSrv();
 setInterval(loadSrv, 60000);
 
@@ -303,4 +321,5 @@ if (configured) {
 }
 </script>
 </body>
-</html>
+                                          </html>
+                                          
