@@ -76,6 +76,9 @@ button.sw.on{border-color:var(--ink)}
 input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--accent);flex:none}
 .task{display:flex;align-items:center;gap:10px;margin:0;color:var(--ink);font-size:15px;font-weight:600}
 .task.done{text-decoration:line-through;opacity:.5}
+.tag.mt{color:#d97706;background:color-mix(in srgb,#f59e0b 20%,transparent)}
+.banner.mt{background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#1f1300;box-shadow:0 12px 28px -12px #f59e0b}
+select{width:100%;padding:12px 16px;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);font:inherit}
 </style>
 </head>
 <body>
@@ -131,7 +134,7 @@ input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--accent)
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, writeBatch, arrayRemove, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, getDocs, query, where, writeBatch, arrayRemove, arrayUnion, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // ====== SCHRITT: Hier deine Firebase-Config einfügen (siehe README) ======
 const firebaseConfig = {
@@ -145,7 +148,7 @@ const firebaseConfig = {
 // ==========================================================================
 
 // Optional: Einladungslink zu eurem Discord, z. B. "https://discord.gg/abcd1234". Leer lassen = kein Button.
-const DISCORD_INVITE = "https://discord.gg/AmZeF6An2J";
+const DISCORD_INVITE = "";
 
 const TAGS = ["Bauen", "Redstone", "Farmen", "Technik", "Magie", "Erkunden", "Kampf", "Handel", "Anfängerfreundlich"];
 const EMOJIS = ["⛏️", "🏰", "🔥", "⚡", "🌲", "💎", "🐉", "🚀", "🧪", "⚔️", "🌋", "🪄"];
@@ -202,6 +205,125 @@ const isMember = t => !!me && t.memberIds.includes(me);
 const login = () => signInWithPopup(auth, new GoogleAuthProvider()).catch(fail);
 const gBtn = (cls) => h("button", { class: cls || "", onclick: login }, h("span", { class: "g" }, "G"), "Mit Google anmelden");
 
+// ====== Rollen, Wartung, Einladungen ======
+let invite = null, role = null, admins = [], admSub = false, srvDoc = { manual: false, msg: "", plans: [] }, prevIn = null, lastMaint = 0, pendInvite = null, sound = false;
+try { sound = localStorage.getItem("snd") === "1"; } catch (e) {}
+try { const j = new URLSearchParams(location.search).get("join"); if (j && j.includes(".")) { const [tid, code] = j.split("."); pendInvite = { tid, code }; } } catch (e) {}
+const isAdmin = () => !!(me && role && role.role === "sv-admin");
+const fmt = ms => new Date(ms).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
+function maint() {
+  if (srvDoc.manual) return { title: srvDoc.msg || "Wartungsarbeiten", type: "Wartung" };
+  const now = Date.now();
+  return (srvDoc.plans || []).find(p => p.start <= now && now < p.end) || null;
+}
+function nextPlan() { const now = Date.now(); return (srvDoc.plans || []).filter(p => p.start > now).sort((a, b) => a.start - b.start)[0] || null; }
+function applyMaint() { const m = maint(), st = $("#srvState"); if (m && st) { st.className = "tag mt"; st.textContent = "🛠 Wartung"; } }
+function beep() {
+  try { const c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain();
+    if (c.resume) c.resume(); o.connect(g); g.connect(c.destination); o.frequency.value = 880; g.gain.value = 0.08; o.start(); o.stop(c.currentTime + 0.18); } catch (e) {}
+}
+async function saveSrv(fn) {
+  const d = JSON.parse(JSON.stringify({ manual: false, msg: "", plans: [], ...srvDoc })); fn(d);
+  try { await setDoc(doc(db, "server", "status"), d); return true; } catch (e) { fail(e); return false; }
+}
+function addPlan() {
+  const g = id => $("#" + id).value.trim(), a = new Date($("#adm-start").value).getTime(), b = new Date($("#adm-end").value).getTime();
+  if (!g("adm-title") || isNaN(a) || isNaN(b) || b <= a) return toast("Bitte Titel, Beginn und ein Ende nach dem Beginn angeben.");
+  saveSrv(d => d.plans.push({ id: Date.now().toString(36), type: $("#adm-type").value, title: g("adm-title"), start: a, end: b, note: g("adm-note") }))
+    .then(ok => { if (ok) ["adm-title", "adm-start", "adm-end", "adm-note"].forEach(id => { const el = $("#" + id); if (el) el.value = ""; }); });
+}
+async function addAdmin() {
+  const uid = $("#adm-uid").value.trim(), name = $("#adm-name").value.trim();
+  if (uid.length < 10) return toast("Bitte die User-ID der Person einfügen.");
+  try { await setDoc(doc(db, "roles", uid), { role: "sv-admin", name }); $("#adm-uid").value = ""; $("#adm-name").value = ""; } catch (e) { fail(e); }
+}
+function adminPanel() {
+  const f = (id, label, el) => h("div", { style: "flex:1;min-width:150px" }, h("label", { for: id }, label), el);
+  const plans = [...(srvDoc.plans || [])].sort((a, b) => a.start - b.start);
+  return h("div", { class: "panel mp", style: "--tc:#f59e0b" },
+    h("h2", {}, "🛠 Server-Verwaltung (sv-admin)"),
+    h("div", { class: "row", style: "justify-content:space-between" },
+      h("span", {}, "Wartungsmodus: ", h("span", { class: "tag" + (srvDoc.manual ? " mt" : "") }, srvDoc.manual ? "AN" : "aus")),
+      h("button", { class: srvDoc.manual ? "" : "bad", onclick: () => saveSrv(d => { d.manual = !d.manual; d.msg = $("#adm-msg").value.trim(); }) }, srvDoc.manual ? "Wartung beenden" : "Wartung jetzt starten")),
+    f("adm-msg", "Hinweistext für den manuellen Modus (wird beim Starten übernommen)", h("input", { id: "adm-msg", maxlength: "100", placeholder: "z. B. Server-Neustart", value: srvDoc.msg || "" })),
+    h("p", { class: "mute", style: "margin-top:16px" }, "Neuen Plan eintragen (der Server gilt im Zeitraum automatisch als „Wartung“)"),
+    h("div", { class: "row" },
+      f("adm-type", "Art", h("select", { id: "adm-type" }, h("option", {}, "Wartung"), h("option", {}, "Update"))),
+      f("adm-title", "Titel", h("input", { id: "adm-title", maxlength: "60", placeholder: "z. B. Modpack-Update" }))),
+    h("div", { class: "row", style: "margin-top:8px" },
+      f("adm-start", "Beginn", h("input", { id: "adm-start", type: "datetime-local" })),
+      f("adm-end", "Ende", h("input", { id: "adm-end", type: "datetime-local" }))),
+    h("div", { style: "margin-top:8px" }, f("adm-note", "Notiz (optional)", h("input", { id: "adm-note", maxlength: "120" }))),
+    h("p", {}, h("button", { class: "sm", onclick: addPlan }, "Plan speichern")),
+    h("p", { class: "mute" }, "Eingetragene Pläne"),
+    plans.length ? plans.map(p => h("div", { class: "req" },
+      h("div", {}, h("strong", {}, (p.type === "Update" ? "⬆️ " : "🛠 ") + p.title),
+        h("div", { class: "mute" }, fmt(p.start) + " – " + fmt(p.end) + (p.note ? " · " + p.note : "") + (p.end < Date.now() ? " · vorbei" : ""))),
+      h("button", { class: "ghost sm", onclick: () => saveSrv(d => d.plans = d.plans.filter(x => x.id !== p.id)) }, "Löschen")))
+      : h("div", { class: "mute" }, "Noch keine Pläne."),
+    h("p", { class: "mute", style: "margin-top:16px" }, "sv-admins"),
+    admins.map(a => h("div", { class: "req" }, h("span", {}, (a.name || "ohne Name") + " ", h("span", { class: "mute" }, a.id.slice(0, 8) + "…")),
+      a.id === me ? h("span", { class: "tag" }, "Du") : confirmBtn("Entfernen", "Sicher?", () => deleteDoc(doc(db, "roles", a.id)).catch(fail)))),
+    h("div", { class: "row" },
+      h("input", { id: "adm-uid", style: "flex:2;min-width:200px", placeholder: "User-ID der Person (Button „ID“ oben rechts)" }),
+      h("input", { id: "adm-name", style: "flex:1;min-width:120px", placeholder: "Name" }),
+      h("button", { class: "sm", onclick: addAdmin }, "Hinzufügen")));
+}
+
+// ====== Moderation (nur sv-admin) ======
+async function adminPatch(t, patch) { try { await updateDoc(doc(db, "teams", t.id), patch); toast("Gespeichert."); } catch (e) { fail(e); } }
+async function adminDelTeam(t) {
+  try {
+    const b = writeBatch(db);
+    b.delete(doc(db, "teams", t.id)); b.delete(doc(db, "invites", t.id));
+    (await getDocs(query(collection(db, "requests"), where("teamId", "==", t.id)))).docs.forEach(d => b.delete(d.ref));
+    await b.commit(); toast("Team „" + t.name + "“ gelöscht.");
+  } catch (e) { fail(e); }
+}
+function modBlock(t) {
+  const others = membersOf(t).filter(m => m.id !== t.id);
+  return h("div", { style: "border-top:1px dashed var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px" },
+    h("div", { class: "row" }, h("span", { class: "tag mt" }, "🛡 Moderation"),
+      t.desc ? confirmBtn("Beschreibung leeren", "Sicher?", () => adminPatch(t, { desc: "" })) : null,
+      confirmBtn("Team löschen", "Wirklich löschen?", () => adminDelTeam(t), "bad sm")),
+    others.length ? h("div", { class: "row" }, h("span", { class: "mute" }, "Mitglied entfernen:"),
+      others.map(m => h("span", { class: "row", style: "gap:4px" }, chip(m.mc),
+        confirmBtn("✕", "Raus?", () => adminPatch(t, { memberIds: arrayRemove(m.id), ["names." + m.id]: deleteField() }))))) : null);
+}
+
+const inviteLink = () => location.origin + location.pathname + "?join=" + me + "." + invite.code;
+async function makeInvite() {
+  const a = new Uint8Array(12); crypto.getRandomValues(a);
+  try { await setDoc(doc(db, "invites", me), { code: [...a].map(x => (x % 36).toString(36)).join(""), createdAt: Date.now() }); } catch (e) { fail(e); }
+}
+function invSection() {
+  return [h("p", { class: "mute", style: "margin-top:16px" }, "Einladungslink"),
+    invite ? h("div", { class: "row" },
+      h("input", { readonly: true, value: inviteLink(), style: "flex:1;min-width:200px", onfocus: e => e.target.select() }),
+      h("button", { class: "sm", onclick: () => navigator.clipboard.writeText(inviteLink()).then(() => toast("Link kopiert."), () => toast("Bitte den Link manuell kopieren.")) }, "Kopieren"),
+      confirmBtn("Neu erzeugen", "Alter Link wird ungültig – sicher?", makeInvite),
+      confirmBtn("Deaktivieren", "Sicher?", () => deleteDoc(doc(db, "invites", me)).catch(fail)))
+    : h("div", { class: "row" }, h("button", { class: "sm", onclick: makeInvite }, "Einladungslink erstellen"),
+      h("span", { class: "mute" }, "Wer den Link öffnet und sich anmeldet, tritt direkt bei, ohne Anfrage."))];
+}
+function invitePanel(t) {
+  const full = t.memberIds.length >= t.max;
+  return h("div", { class: "panel", style: "--tc:" + t.color },
+    h("h2", {}, "📨 Einladung: " + t.emoji + " " + t.name),
+    h("p", { class: "mute" }, "Ersteller: " + t.ownerMc + " · " + t.memberIds.length + "/" + t.max + " Mitglieder"),
+    h("div", { class: "row" },
+      h("button", { disabled: full, onclick: joinByInvite }, full ? "Team voll" : "Jetzt beitreten"),
+      h("button", { class: "ghost", onclick: () => { pendInvite = null; history.replaceState(null, "", location.pathname); render(); } }, "Ablehnen")));
+}
+async function joinByInvite() {
+  if (!mcName()) { toast("Bitte trage oben zuerst deinen Minecraft-Namen ein."); $("#mc").focus(); return; }
+  const { tid, code } = pendInvite, b = writeBatch(db);
+  b.set(doc(db, "inviteuse", tid + "_" + me), { teamId: tid, uid: me, code });
+  b.update(doc(db, "teams", tid), { memberIds: arrayUnion(me), ["names." + me]: mcName() });
+  try { await b.commit(); pendInvite = null; history.replaceState(null, "", location.pathname); toast("Du bist dem Team beigetreten!"); }
+  catch (e) { toast("Beitritt nicht möglich: Link ungültig oder abgelaufen, oder das Team ist voll."); }
+}
+
 function renderTop() {
   const st = $("#status"), au = $("#auth"), cta = $("#cta"), bn = $("#banner");
   [st, au, cta, bn].forEach(x => x.replaceChildren());
@@ -212,7 +334,10 @@ function renderTop() {
     cta.append(gBtn());
     st.append(h("div", { class: "note" }, "Du kannst alle Teams ansehen. Zum Erstellen und Beitreten bitte mit Google anmelden."));
   } else {
-    au.append(h("span", { class: "mute" }, myName), h("button", { class: "ghost sm", onclick: () => signOut(auth) }, "Logout"));
+    au.append(
+      h("button", { class: "ghost sm", title: "Ton bei neuer Anfrage", onclick: () => { sound = !sound; try { localStorage.setItem("snd", sound ? "1" : "0"); } catch (e) {} if (sound) beep(); render(); } }, sound ? "🔔" : "🔕"),
+      h("button", { class: "ghost sm", title: "Meine User-ID kopieren", onclick: () => navigator.clipboard.writeText(me).then(() => toast("User-ID kopiert."), () => toast(me)) }, "ID"),
+      h("span", { class: "mute" }, myName), h("button", { class: "ghost sm", onclick: () => signOut(auth) }, "Logout"));
     if (!myTeam()) cta.append(h("button", { onclick: () => {
       if (!mcName()) { toast("Bitte trage oben zuerst deinen Minecraft-Namen ein."); $("#mc").focus(); return; }
       openDlg(null);
@@ -220,6 +345,11 @@ function renderTop() {
   }
   if (DISCORD_INVITE) cta.append(h("a", { class: "btn dc", href: DISCORD_INVITE, target: "_blank", rel: "noopener" }, "💬 Discord beitreten"));
   if (myTeam() && incoming.length) bn.append(h("div", { class: "banner" }, "📬 " + incoming.length + " neue Beitrittsanfrage" + (incoming.length > 1 ? "n" : "") + " für dein Team"));
+  const m = maint();
+  if (m) bn.append(h("div", { class: "banner mt" }, "🛠 " + (m.title || "Wartungsarbeiten") + (m.end ? " · voraussichtlich bis " + fmt(m.end) : "") + (m.note ? " – " + m.note : "")));
+  else { const nx = nextPlan(); if (nx) bn.append(h("div", { class: "note" }, "📅 Geplant: " + nx.type + " „" + nx.title + "“ am " + fmt(nx.start) + " bis " + fmt(nx.end))); }
+  if (pendInvite && me) { const t = teams.find(x => x.id === pendInvite.tid); if (t && !isMember(t)) bn.append(invitePanel(t)); }
+  if (pendInvite && !me && configured) bn.append(h("div", { class: "note" }, "📨 Du wurdest zu einem Team eingeladen. Bitte oben mit Google anmelden, um beizutreten."));
 }
 
 function minePanel(t) {
@@ -240,6 +370,7 @@ function minePanel(t) {
           h("button", { disabled: n >= t.max, onclick: () => accept(r) }, "Annehmen"),
           h("button", { class: "ghost", onclick: () => deleteDoc(doc(db, "requests", r.id)).catch(fail) }, "Ablehnen"))))
         : h("div", { class: "mute" }, "Keine offenen Anfragen.")] : null,
+    owner ? invSection() : null,
     h("p", { class: "mute", style: "margin-top:16px" }, "Aufgaben (" + done + "/" + t.tasks.length + ")"),
     t.tasks.map(k => h("div", { class: "req" },
       h("label", { class: "task" + (k.done ? " done" : "") },
@@ -278,17 +409,24 @@ function renderGrid() {
       h("div", { class: "row" }, h("span", { class: "tag" }, n + "/" + t.max + " Mitglieder"), h("span", { class: "mute" }, "Ersteller:"), chip(t.ownerMc)),
       h("div", { class: "mute" }, t.desc || "Keine Beschreibung."),
       h("div", { class: "row" }, membersOf(t).map(m => chip(m.mc))),
-      act));
+      act,
+      isAdmin() && t.id !== me ? modBlock(t) : null));
   });
 }
 
 function render() {
-  const ae = document.activeElement, keep = ae && ae.id && ae.id.startsWith("task-") ? { id: ae.id, v: ae.value, s: ae.selectionStart } : null;
+  const saved = {}; document.querySelectorAll("[id^=task-],[id^=adm-]").forEach(e => saved[e.id] = e.value);
+  const ae = document.activeElement, fid = ae && ae.id, fs = ae && ae.selectionStart;
   renderTop();
-  const mine = $("#mine"); mine.replaceChildren(...teams.filter(isMember).sort((a, b) => (a.id === me ? -1 : 1)).map(minePanel));
+  $("#mine").replaceChildren(...(isAdmin() ? [adminPanel()] : []), ...teams.filter(isMember).sort((a, b) => (a.id === me ? -1 : 1)).map(minePanel));
   renderGrid();
-  if (keep) { const el = document.getElementById(keep.id); if (el) { el.value = keep.v; el.focus(); el.setSelectionRange(keep.s, keep.s); } }
+  for (const id in saved) { const el = document.getElementById(id); if (el && saved[id]) el.value = saved[id]; }
+  if (fid && (fid.startsWith("task-") || fid.startsWith("adm-"))) { const el = document.getElementById(fid); if (el) { el.focus(); try { el.setSelectionRange(fs, fs); } catch (e) {} } }
+  applyMaint();
+  document.title = (me && myTeam() && incoming.length ? "(" + incoming.length + ") " : "") + "Craftoria Teams";
+  const mk = maint() ? 1 : 0; if (mk !== lastMaint) { lastMaint = mk; loadSrv(); }
 }
+setInterval(render, 30000);
 $("#q").addEventListener("input", render);
 
 async function saveTeam(fn) { const t = clean(myTeam()); fn(t); try { await setDoc(doc(db, "teams", me), t); } catch (e) { fail(e); } }
@@ -307,7 +445,7 @@ async function accept(r) {
   try { await b.commit(); } catch (e) { fail(e); }
 }
 async function removeTeam() {
-  const b = writeBatch(db); b.delete(doc(db, "teams", me));
+  const b = writeBatch(db); b.delete(doc(db, "teams", me)); b.delete(doc(db, "invites", me));
   incoming.forEach(r => b.delete(doc(db, "requests", r.id)));
   try { await b.commit(); } catch (e) { fail(e); }
 }
@@ -415,14 +553,21 @@ if (configured) {
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app); db = getFirestore(app);
   onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => norm({ id: d.id, ...d.data() })); render(); }, fail);
+  onSnapshot(doc(db, "server", "status"), s => { srvDoc = { manual: false, msg: "", plans: [], ...(s.exists() ? s.data() : {}) }; render(); }, fail);
   onAuthStateChanged(auth, u => {
-    unsubs.forEach(f => f()); unsubs = []; incoming = []; outgoing = {};
+    unsubs.forEach(f => f()); unsubs = []; incoming = []; outgoing = {}; prevIn = null; invite = null; role = null; admins = []; admSub = false;
     me = u ? u.uid : null; myName = u ? (u.displayName || "") : "";
     if (u) {
       unsubs.push(onSnapshot(query(collection(db, "requests"), where("fromUid", "==", u.uid)),
         s => { outgoing = {}; s.docs.forEach(d => outgoing[d.data().teamId] = d.data()); render(); }, fail));
       unsubs.push(onSnapshot(query(collection(db, "requests"), where("teamId", "==", u.uid)),
-        s => { incoming = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, fail));
+        s => { const old = prevIn; incoming = s.docs.map(d => ({ id: d.id, ...d.data() })); prevIn = incoming.length; if (sound && old != null && incoming.length > old) beep(); render(); }, fail));
+      unsubs.push(onSnapshot(doc(db, "invites", u.uid), s => { invite = s.exists() ? s.data() : null; render(); }, fail));
+      unsubs.push(onSnapshot(doc(db, "roles", u.uid), s => {
+        role = s.exists() ? s.data() : null;
+        if (isAdmin() && !admSub) { admSub = true; unsubs.push(onSnapshot(collection(db, "roles"), r => { admins = r.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, fail)); }
+        render();
+      }, fail));
     }
     render();
   });
@@ -430,4 +575,3 @@ if (configured) {
 </script>
 </body>
 </html>
-                                          
